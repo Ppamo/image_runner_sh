@@ -4,6 +4,9 @@ IMAGE=alpine:3.15.0
 IMAGE=ubuntu:latest
 IMAGE=ppamo/mq-access-pre:v0.1.5
 REPO=${IMAGE%:*}
+DOMAIN=${REPO%/*}
+IMAGENAME=${REPO#*/}
+TAG=${REPO#*:}
 echo "$REPO" | grep "/" > /dev/null
 if [ $? -ne 0 ]; then
 	REPO=library/$REPO
@@ -36,13 +39,31 @@ getManifest(){
 	curl --request 'GET' \
 		--header "Authorization: Bearer ${TOKEN}" \
 		"$REGISTRY_SERVER/v2/$REPO/manifests/$VERSION" -o $TMPFILE
-	cat $TMPFILE | jq
+	cat $TMPFILE
+	echo
+	echo
 }
+
+getLayers(){
+	printf "> Getting layers for $REPO:$VERSION:\n"
+	LAYERS=$(cat $TMPFILE | tr '\n' ' ' | tr '\r' ' ' | grep -Eo '"fsLayers":[^\[]*\[[^]]*]' | tr '"' '\n' | grep -Eo 'sha256:[0-9a-Z]+')
+	for i in $LAYERS
+	do
+		URL="$REGISTRY_SERVER/v2/$DOMAIN/$IMAGENAME/blobs/$i"
+		printf "> Downloading $URL:\n"
+		curl -s -w "%{http_code}\n" --request 'GET' -L \
+			--header "Authorization: Bearer ${TOKEN}" \
+			"$URL" -o $i
+	done
+}
+
 
 echo "* Authenticating"
 getToken
 echo "* Getting data:"
 getManifest
+echo "* Getting layers"
+getLayers
 exit 0
 
 
