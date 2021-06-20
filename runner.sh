@@ -11,6 +11,8 @@ fi
 
 FILE=$1
 SID=$(date +%Y.%m.%d.%H.%M.%S.%N | base64)
+LAYERS=""
+RLAYERS=""
 
 ###
 
@@ -49,14 +51,10 @@ unpack_layers(){
 	printf "> Unpacking layers:\n"
 	BASEPATH=/tmp/$SID
 	LAYERS=$(cat $BASEPATH/manifest.json | tr '\n' ' ' | tr '\r' ' ' | grep -Eo '"Layers":[ ]*[^\[]*\[[^]]*]' | tr '"' '\n' | grep -Eo "[0-9a-Z]{64}.*$")
-	ALAYERS=""
-	for LINE in $LAYERS; do
-		ALAYERS="$LINE $ALAYERS"
-	done
 	FOLDER=/tmp/$SID/container
 	rm -Rf $FOLDER
 	mkdir $FOLDER
-	for LINE in $ALAYERS; do
+	for LINE in $LAYERS; do
 		printf -- "- Unpacking $(dirname $LINE)\n"
 		tar xf $BASEPATH/$LINE --directory=$FOLDER --overwrite
 		if [ $? -ne 0 ]; then
@@ -69,6 +67,10 @@ unpack_layers(){
 
 start_container(){
 	printf "> Starting container:\n"
+	printf "- Getting startup info from json files:"
+	for LINE in $LAYERS; do
+		RLAYERS="$LINE $RLAYERS"
+	done
 	printf "< Done\n"
 }
 
