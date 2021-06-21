@@ -13,6 +13,8 @@ FILE=$1
 SID=$(date +%Y.%m.%d.%H.%M.%S.%N | base64)
 LAYERS=""
 RLAYERS=""
+IMAGE_PATH=/tmp/$SID
+CONTAINER_PATH=$IMAGE_PATH/container
 
 ###
 
@@ -33,13 +35,12 @@ check_payload(){
 
 unpack_file(){
 	printf "> Unpaking image $FILE:\n"
-	FOLDER=/tmp/$SID
-	if [ -f $FOLDER ]; then
+	if [ -f $IMAGE_PATH ]; then
 		printf -- "- SID in use!\n"
 		exit 3
 	fi
-	mkdir $FOLDER
-	tar xfv $FILE --directory=$FOLDER
+	mkdir $IMAGE_PATH
+	tar xfv $FILE --directory=$IMAGE_PATH
 	if [ $? -ne 0 ]; then
 		printf -- "- Image unpacking failed!\n"
 		exit 4
@@ -49,14 +50,12 @@ unpack_file(){
 
 unpack_layers(){
 	printf "> Unpacking layers:\n"
-	BASEPATH=/tmp/$SID
-	LAYERS=$(cat $BASEPATH/manifest.json | tr '\n' ' ' | tr '\r' ' ' | grep -Eo '"Layers":[ ]*[^\[]*\[[^]]*]' | tr '"' '\n' | grep -Eo "[0-9a-Z]{64}.*$")
-	FOLDER=/tmp/$SID/container
-	rm -Rf $FOLDER
-	mkdir $FOLDER
+	LAYERS=$(cat $IMAGE_PATH/manifest.json | tr '\n' ' ' | tr '\r' ' ' | grep -Eo '"Layers":[ ]*[^\[]*\[[^]]*]' | tr '"' '\n' | grep -Eo "[0-9a-Z]{64}.*$")
+	rm -Rf $CONTAINER_PATH
+	mkdir $CONTAINER_PATH
 	for LINE in $LAYERS; do
 		printf -- "- Unpacking $(dirname $LINE)\n"
-		tar xf $BASEPATH/$LINE --directory=$FOLDER --overwrite
+		tar xf $IMAGE_PATH/$LINE --directory=$CONTAINER_PATH --overwrite
 		if [ $? -ne 0 ]; then
 			printf "- Error unpacking layer\n< Error\n"
 			exit 5
@@ -65,12 +64,26 @@ unpack_layers(){
 	printf "< Done\n"
 }
 
-start_container(){
-	printf "> Starting container:\n"
-	printf "- Getting startup info from json files:"
+getting_info(){
+	printf "> Getting container info:\n"
+	printf -- "- Getting startup info from json files:\n"
 	for LINE in $LAYERS; do
 		RLAYERS="$LINE $RLAYERS"
 	done
+	FILE=$(echo "$IMAGE_PATH/$(dirname $LINE)/json")
+	printf -- "- Reading $FILE\n"
+	CONFIG=$(grep -zPo '"config":(\{([^{}]++|(?1))*\})' $FILE)
+	IENV=$(echo $CONFIG | grep -Eo '"Env":\[[^]]*]' | sed 's/^"Env":\[\|]$//g' | tr ',' '\n' | sed 's/^"\|"$//g' )
+	printf -- '- ENV:\n%s\n' "$IENV"
+	ICMD=$(echo "$CONFIG" | grep -Eo '"Cmd":\[[^]]*]' | sed 's/^"Cmd":\[\|\]$//g' | sed 's/^"\|"$//g' | sed 's/","/ /g' )
+	printf -- '- CMD: %s\n' "$ICMD"
+	IWRK=$(echo "$CONFIG" | grep -Eo '"WorkingDir":"[^"]*"' | grep -Eo ':".*"$' | sed 's/^:"\|"$//g')
+	printf -- '- WORKDIR: %s\n' "$IWRK"
+	printf "< Done\n"
+}
+
+start_container(){
+	printf "> Starting container:\n"
 	printf "< Done\n"
 }
 
@@ -79,5 +92,7 @@ start_container(){
 check_payload
 unpack_file
 unpack_layers
+getting_info
 start_container
-printf -- "* $BASEPATH\n"
+printf -- "* $IMAGE_PATH\n"
+
