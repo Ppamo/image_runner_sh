@@ -75,7 +75,7 @@ getting_info(){
 	CONFIG=$(grep -zPo '"config":(\{([^{}]++|(?1))*\})' $FILE)
 	IENV=$(echo $CONFIG | grep -Eo '"Env":\[[^]]*]' | sed 's/^"Env":\[\|]$//g' | tr ',' '\n' | sed 's/^"\|"$//g' )
 	printf -- '- ENV:\n%s\n' "$IENV"
-	ICMD=$(echo "$CONFIG" | grep -Eo '"Cmd":\[[^]]*]' | sed 's/^"Cmd":\[\|\]$//g' | sed 's/^"\|"$//g' | sed 's/","/ /g' )
+	ICMD=$(echo "$CONFIG" | grep -Eo '"Cmd":\[[^]]*]' | sed 's/^"Cmd":\[\|\]$//g' | sed 's/","/" "/g' )
 	printf -- '- CMD: %s\n' "$ICMD"
 	IWRK=$(echo "$CONFIG" | grep -Eo '"WorkingDir":"[^"]*"' | grep -Eo ':".*"$' | sed 's/^:"\|"$//g')
 	printf -- '- WORKDIR: %s\n' "$IWRK"
@@ -83,7 +83,26 @@ getting_info(){
 }
 
 start_container(){
+	printf "> Preparing container start:\n"
+	SS_PATH=$CONTAINER_PATH/.starter.sh
+	printf -- "- Changing filesystem path to $CONTAINER_PATH:\n"
+	for LINE in $IENV; do
+		printf "export %s\n" "$LINE"
+	done >> $SS_PATH
+	if [ -n "$IWRK" ]; then
+		echo "cd $IWRK" >> $SS_PATH
+	fi
+	if [ -n "$ICMD" ]; then
+		echo "$ICMD" >> $SS_PATH
+	else
+		echo "/bin/sh" >> $SS_PATH
+	fi
+
+	printf -- "- Startup script:\n"
+	cat $SS_PATH
+	printf "< Done\n"
 	printf "> Starting container:\n"
+	chroot $CONTAINER_PATH sh < $SS_PATH
 	printf "< Done\n"
 }
 
