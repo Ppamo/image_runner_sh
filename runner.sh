@@ -18,6 +18,17 @@ CONTAINER_PATH=$IMAGE_PATH/container
 
 ###
 
+signal_handler(){
+	printf "\n> Killing child processes:\n"
+	pkill --signal 3 --parent $$
+}
+
+set_sigint(){
+	printf "> Setting SIGINT signal handler ($$):\n"
+	trap signal_handler INT
+	printf "< Done\n"
+}
+
 check_payload(){
 	printf "> Checking file '$FILE':\n"
 	if [ ! -f $FILE ]; then
@@ -101,8 +112,15 @@ start_container(){
 	printf -- "- Startup script:\n"
 	cat $SS_PATH
 	printf "< Done\n"
-	printf "> Starting container:\n"
+	printf "> Starting container $SID:\n"
+	set_sigint
 	chroot $CONTAINER_PATH sh < $SS_PATH
+	printf "< Done\n"
+}
+
+clean_up(){
+	printf "> Cleaning up:\n"
+	rm -Rf $IMAGE_PATH
 	printf "< Done\n"
 }
 
@@ -113,5 +131,5 @@ unpack_file
 unpack_layers
 getting_info
 start_container
-printf -- "* $IMAGE_PATH\n"
+clean_up
 
