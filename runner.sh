@@ -9,13 +9,19 @@ FILE: Path to the docker image
 	exit 1
 fi
 
-FILE=$1
+FILE=
 SID=$(date +%Y.%m.%d.%H.%M.%S.%N | base64)
 LAYERS=""
 RLAYERS=""
 IMAGE_PATH=/tmp/$SID
 CONTAINER_PATH=$IMAGE_PATH/container
-COMMAND=$(echo "$@" | sed "s/^$FILE//g" | sed 's/ *$//g')
+COMMAND=$(echo "$@" | sed "s/^$1//g" | sed 's/ *$//g')
+TMPFILE=.output.dat
+AUTH_SERVER=https://auth.docker.io
+AUTH_SERVICE=registry.docker.io
+REGISTRY_SERVER=https://registry-1.docker.io
+
+TOKEN=
 
 ###
 
@@ -30,7 +36,43 @@ set_sigint(){
 	printf "< Done\n"
 }
 
-check_payload(){
+get_token(){
+	printf "> Getting auth token:\n"
+	rm -f $TMPFILE
+	curl -fsSL "$AUTH_SERVER/token?service=$AUTH_SERVICE&scope=repository:$REPO:pull" -o $TMPFILE
+	TOKEN=$(grep -Eo '"token"[^:]*:[^"]*"[^"]*"' $TMPFILE | awk -F\" '{ print $4 }')
+	if [ ${#TOKEN} -gt 16 ]; then
+		printf -- "< Got token!\n$TOKEN\n"
+	else
+		printf "!ERROR: could not get the token\n"
+		exit 1
+	fi
+}
+
+getManifest(){
+	printf "> Getting manifest for $REPO:$VERSION:\n"
+	curl --request 'GET' \
+		--header "Authorization: Bearer ${TOKEN}" \
+		"$REGISTRY_SERVER/v2/$REPO/manifests/$VERSION" -o $TMPFILE
+	cat $TMPFILE
+	echo
+	echo
+}
+
+getLayers(){
+	printf "> Getting layers for $REPO:$VERSION:\n"
+	LAYERS=$(cat $TMPFILE | tr '\n' ' ' | tr '\r' ' ' | grep -Eo '"fsLayers":[^\[]*\[[^]]*]' | tr '"' '\n' | grep -Eo 'sha256:[0-9a-Z]+')
+	for i in $LAYERS
+	do
+		URL="$REGISTRY_SERVER/v2/$DOMAIN/$IMAGENAME/blobs/$i"
+		printf "> Downloading $URL:\n"
+		curl -s -w "%{http_code}\n" --request 'GET' -L \
+			--header "Authorization: Bearer ${TOKEN}" \
+			"$URL" -o $i
+	done
+}
+
+check_file(){
 	printf "> Checking file '$FILE':\n"
 	if [ ! -f $FILE ]; then
 		printf -- "- File not found!\n"
@@ -129,9 +171,32 @@ clean_up(){
 	printf "< Done\n"
 }
 
+check_args(){
+	if [ -f $1 ]; then
+		FILE=$1
+		check_file
+	else
+		echo "$1" | grep ':' > /dev/null
+		if [ $? -ne 0]; then
+			IMAGE=$1:latest
+		fi
+		REPO=${IMAGE%:*}
+		DOMAIN=${REPO%/*}
+		IMAGENAME=${REPO#*/}
+		TAG=${REPO#*:}
+		echo "$REPO" | grep "/" > /dev/null
+		if [ $? -ne 0 ]; then
+			REPO=library/$REPO
+		fi
+		VERSION=${IMAGE#*:}
+		get_token
+	fi
+}
+
 ###
 
-check_payload
+check_args
+
 unpack_file
 unpack_layers
 getting_info
