@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ $# -ne 1 ]; then
+if [ $# -lt 1 ]; then
 	printf "USAGE:
 	$0 <FILE>
 
@@ -15,6 +15,7 @@ LAYERS=""
 RLAYERS=""
 IMAGE_PATH=/tmp/$SID
 CONTAINER_PATH=$IMAGE_PATH/container
+COMMAND=$(echo "$@" | sed "s/^$FILE//g" | sed 's/ *$//g')
 
 ###
 
@@ -103,10 +104,14 @@ start_container(){
 	if [ -n "$IWRK" ]; then
 		echo "cd $IWRK" >> $SS_PATH
 	fi
-	if [ -n "$ICMD" ]; then
-		echo "$ICMD" >> $SS_PATH
+	if [ -n "$COMMAND" ]; then
+		echo "$COMMAND" >> $SS_PATH
 	else
-		echo "/bin/sh" >> $SS_PATH
+		if [ -n "$ICMD" ]; then
+			echo "$ICMD" >> $SS_PATH
+		else
+			echo "/bin/sh" >> $SS_PATH
+		fi
 	fi
 
 	printf -- "- Startup script:\n"
